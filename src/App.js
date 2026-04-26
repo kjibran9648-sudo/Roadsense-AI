@@ -64,18 +64,22 @@ function App() {
   const [events, setEvents] = useState([]);
   const [watchId, setWatchId] = useState(null);
 
-  const [speed, setSpeed] = useState("...");
+  const [speed, setSpeed] = useState("0");
   const [distance, setDistance] = useState(0);
   const [heading, setHeading] = useState(0);
-  const [instruction, setInstruction] = useState("Ready");
 
   const [showReport, setShowReport] = useState(false);
   const [speedData, setSpeedData] = useState([]);
 
   const reportRef = useRef();
 
-  // 🚗 Start
+  // 🚗 Start Driving
   const startDriving = () => {
+    if (!navigator.geolocation) {
+      alert("❌ GPS not supported");
+      return;
+    }
+
     setIsDriving(true);
     setRoute([]);
     setEvents([]);
@@ -100,6 +104,7 @@ function App() {
             const currPoint = { latitude, longitude };
 
             const dist = getDistance(prevPoint, currPoint);
+
             if (dist < 3) return prev;
 
             setDistance(d => d + dist);
@@ -111,7 +116,7 @@ function App() {
           return [...prev, point];
         });
 
-        const sp = speed ? (speed * 3.6).toFixed(1) : 0;
+        const sp = speed ? (speed * 3.6).toFixed(1) : "0";
         setSpeed(sp);
 
         setSpeedData(prev => [
@@ -119,14 +124,21 @@ function App() {
           { time: prev.length, speed: Number(sp) }
         ]);
       },
-      (err) => console.log(err),
-      { enableHighAccuracy: true }
+      (err) => {
+        console.error(err);
+        alert("❌ GPS error. Enable location permission.");
+      },
+      {
+        enableHighAccuracy: true,
+        maximumAge: 0,
+        timeout: 10000
+      }
     );
 
     setWatchId(id);
   };
 
-  // 🛑 Stop
+  // 🛑 Stop Driving
   const endDriving = async () => {
     if (watchId) navigator.geolocation.clearWatch(watchId);
 
@@ -138,10 +150,12 @@ function App() {
         path: route,
         events
       });
-    } catch {}
+    } catch {
+      console.log("Backend not reachable");
+    }
   };
 
-  // ➕ Event
+  // ➕ Add Event
   const addEvent = (type) => {
     if (!route.length) return;
 
@@ -153,7 +167,7 @@ function App() {
     ]);
   };
 
-  // 📄 PDF
+  // 📄 PDF Download
   const downloadPDF = async () => {
     const canvas = await html2canvas(reportRef.current);
     const img = canvas.toDataURL("image/png");
@@ -166,9 +180,13 @@ function App() {
   // 🎥 Replay
   const replayRoute = () => {
     let i = 0;
+    const original = [...route];
+
+    setRoute([]);
+
     const interval = setInterval(() => {
-      if (i >= route.length) return clearInterval(interval);
-      setRoute(prev => [...prev.slice(0, i + 1)]);
+      if (i >= original.length) return clearInterval(interval);
+      setRoute(prev => [...prev, original[i]]);
       i++;
     }, 300);
   };
@@ -177,7 +195,7 @@ function App() {
     <div className="app">
       <h1 className="title">
         RoadSense AI
-        <span>– A Pothole Detection System</span>
+        <span> – A Pothole Detection System</span>
       </h1>
 
       <div className="panel glass">
@@ -206,7 +224,6 @@ function App() {
         <div className="stats">
           <div className="card">⚡ {speed} km/h</div>
           <div className="card">📏 {(distance / 1000).toFixed(2)} km</div>
-          <div className="card">🧭 {instruction}</div>
         </div>
       </div>
 
