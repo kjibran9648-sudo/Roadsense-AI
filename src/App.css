@@ -1,38 +1,95 @@
-.App {
-  text-align: center;
-}
-
-.App-logo {
-  height: 40vmin;
-  pointer-events: none;
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  .App-logo {
-    animation: App-logo-spin infinite 20s linear;
-  }
-}
-
-.App-header {
-  background-color: #282c34;
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  font-size: calc(10px + 2vmin);
+body {
+  margin: 0;
+  font-family: "Segoe UI", sans-serif;
+  background: linear-gradient(135deg, #0f172a, #020617);
   color: white;
 }
 
-.App-link {
-  color: #61dafb;
+/* Title */
+.title {
+  text-align: center;
+  font-size: 28px;
+  margin-top: 10px;
 }
 
-@keyframes App-logo-spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
+.title span {
+  display: block;
+  font-size: 14px;
+  color: #38bdf8;
+}
+
+/* Glass UI */
+.glass {
+  background: rgba(30, 41, 59, 0.6);
+  backdrop-filter: blur(12px);
+  border-radius: 12px;
+  padding: 12px;
+}
+
+/* Panel */
+.panel {
+  margin: 10px;
+}
+
+/* Buttons */
+.btn {
+  margin: 5px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: none;
+  background: #334155;
+  color: white;
+  cursor: pointer;
+  transition: 0.2s;
+}
+
+.btn:hover {
+  transform: scale(1.05);
+}
+
+.primary {
+  background: #38bdf8;
+  color: black;
+}
+
+.warn {
+  background: #f59e0b;
+}
+
+.danger {
+  background: #ef4444;
+}
+
+/* Stats */
+.stats {
+  display: flex;
+  justify-content: space-around;
+  margin-top: 10px;
+}
+
+.card {
+  background: #1e293b;
+  padding: 8px 12px;
+  border-radius: 10px;
+}
+
+/* Map */
+.map {
+  height: 500px;
+  margin: 10px;
+  border-radius: 12px;
+}
+
+/* Report */
+.report {
+  margin: 10px;
+}
+
+.report-buttons {
+  margin-top: 10px;
+}
+
+/* Car */
+.car-icon {
+  text-align: center;
 }
