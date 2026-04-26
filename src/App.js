@@ -18,7 +18,7 @@ import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 import "./App.css";
 
-const API = "https://twistable-reach-decorator.ngrok-free.dev";
+const API = "https://roadsense-backend-gdsm.onrender.com";
 
 // 🔥 Heatmap
 function Heatmap({ events }) {
