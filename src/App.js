@@ -4,21 +4,22 @@ import {
   MapContainer,
   TileLayer,
   Marker,
-  Popup,
   Polyline,
-  useMap,
-  CircleMarker
+  CircleMarker,
+  useMap
 } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import "leaflet.heat";
 import { getDistance, getRhumbLineBearing } from "geolib";
 import { LineChart, Line, XAxis, YAxis, Tooltip } from "recharts";
-import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
+import jsPDF from "jspdf";
+import polyline from "@mapbox/polyline";
 import "./App.css";
 
 const API = "https://roadsense-backend-gdsm.onrender.com";
+const MAPBOX_TOKEN = "YOUR_MAPBOX_TOKEN"; // 🔑 replace
 
 /* 🔥 HEATMAP */
 function Heatmap({ events }) {
@@ -38,62 +39,10 @@ function Heatmap({ events }) {
   return null;
 }
 
-/* 📍 AUTO ZOOM */
-function FitBounds({ route }) {
-  const map = useMap();
-
-  useEffect(() => {
-    if (route.length > 1) {
-      const bounds = L.latLngBounds(route);
-      map.fitBounds(bounds, { padding: [30, 30] });
-    }
-  }, [route, map]);
-
-  return null;
-}
-
-/* 🗺️ REPORT MAP */
-function ReportMap({ route, events }) {
-  return (
-    <MapContainer
-      center={route[0] || [26.85, 80.95]}
-      zoom={14}
-      style={{ height: "250px", width: "100%", borderRadius: "10px" }}
-      dragging={false}
-      zoomControl={false}
-      scrollWheelZoom={false}
-    >
-      <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-
-      <FitBounds route={route} />
-
-      <Polyline positions={route} color="cyan" />
-
-      {/* 🧠 AI severity coloring */}
-      {events.map((e, i) => {
-        let color = "green";
-        if (e.severity > 6) color = "red";
-        else if (e.severity > 3) color = "orange";
-
-        return (
-          <CircleMarker
-            key={i}
-            center={[e.lat, e.lng]}
-            radius={6}
-            pathOptions={{ color, fillOpacity: 1 }}
-          />
-        );
-      })}
-
-      <Heatmap events={events} />
-    </MapContainer>
-  );
-}
-
 /* 🚗 CAR ICON */
 const carIcon = (angle) =>
   L.divIcon({
-    html: `<div style="transform: rotate(${angle}deg); font-size:28px;">🚗</div>`
+    html: `<div style="transform: rotate(${angle}deg); font-size:26px;">🚗</div>`
   });
 
 function App() {
@@ -120,12 +69,11 @@ function App() {
     const id = navigator.geolocation.watchPosition(
       (pos) => {
         const { latitude, longitude, speed } = pos.coords;
-
         const point = [latitude, longitude];
 
         setRoute(prev => {
           if (prev.length > 0) {
-            const last = prev[prev.length - 1];
+            const last = prev.at(-1);
 
             const dist = getDistance(
               { latitude: last[0], longitude: last[1] },
@@ -140,6 +88,7 @@ function App() {
               { latitude: last[0], longitude: last[1] },
               { latitude, longitude }
             );
+
             setHeading(angle);
           }
 
@@ -154,7 +103,7 @@ function App() {
           { time: prev.length, speed: Number(sp) }
         ]);
       },
-      (err) => alert("GPS error"),
+      () => alert("Enable GPS"),
       { enableHighAccuracy: true }
     );
 
@@ -173,7 +122,7 @@ function App() {
     } catch {}
   };
 
-  /* ➕ EVENT */
+  /* ➕ ADD EVENT */
   const addEvent = (type) => {
     if (!route.length) return;
 
@@ -185,14 +134,35 @@ function App() {
         lat: last[0],
         lng: last[1],
         type,
-        severity: Math.floor(Math.random() * 10) + 1
+        severity:
+          type === "streetlight"
+            ? 1
+            : Math.floor(Math.random() * 10) + 1
       }
     ]);
   };
 
+  /* 🗺️ STATIC ROUTE IMAGE (FOR REPORT + PDF ✅) */
+  const getRouteImage = () => {
+    if (route.length < 2) return "";
+
+    const coords = route.map(p => [p[0], p[1]]);
+    const encoded = polyline.encode(coords);
+
+    const markers = events.map(e => {
+      let color = "ff0000"; // pothole
+      if (e.type === "breaker") color = "ffff00";
+      if (e.type === "streetlight") color = "800080";
+
+      return `pin-s+${color}(${e.lng},${e.lat})`;
+    }).join(",");
+
+    return `https://api.mapbox.com/styles/v1/mapbox/streets-v11/static/path-5+0000ff(${encoded})/${markers}/${coords[0][1]},${coords[0][0]},13/700x300?access_token=${MAPBOX_TOKEN}`;
+  };
+
   /* 📄 PDF */
   const downloadPDF = async () => {
-    const canvas = await html2canvas(reportRef.current, { scale: 2 });
+    const canvas = await html2canvas(reportRef.current);
     const img = canvas.toDataURL("image/png");
 
     const pdf = new jsPDF();
@@ -210,32 +180,47 @@ function App() {
       if (i >= original.length) return clearInterval(interval);
       setRoute(prev => [...prev, original[i]]);
       i++;
-    }, 300);
+    }, 200);
   };
 
   return (
     <div className="app">
       <h1 className="title">
-        RoadSense AI
-        <span> – A Pothole Detection System</span>
+        RoadSense AI <span>– Pothole Detection System</span>
       </h1>
 
+      {/* 🎮 CONTROLS */}
       <div className="controls">
         {!isDriving ? (
-          <button onClick={startDriving}>Start</button>
+          <button className="btn start" onClick={startDriving}>
+            🚗 Start Driving
+          </button>
         ) : (
-          <>
-            <button onClick={() => addEvent("pothole")}>🚧</button>
-            <button onClick={() => addEvent("breaker")}>⚠️</button>
-            <button onClick={endDriving}>Stop</button>
-          </>
+          <div className="drive-controls">
+            <button className="btn pothole" onClick={() => addEvent("pothole")}>
+              🚧
+            </button>
+
+            <button className="btn breaker" onClick={() => addEvent("breaker")}>
+              ⚠️
+            </button>
+
+            <button className="btn light" onClick={() => addEvent("streetlight")}>
+              💡
+            </button>
+
+            <button className="btn end" onClick={endDriving}>
+              🛑
+            </button>
+          </div>
         )}
       </div>
 
+      {/* 🗺️ MAP */}
       <MapContainer center={[26.85, 80.95]} zoom={13} className="map">
         <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
 
-        <Polyline positions={route} color="cyan" />
+        <Polyline positions={route} color="#38bdf8" />
 
         {route.length > 0 && (
           <>
@@ -249,26 +234,50 @@ function App() {
 
       {/* 📊 REPORT */}
       {showReport && (
-        <div ref={reportRef} className="report">
-          <h2>Trip Report</h2>
+        <div ref={reportRef} className="report premium">
+          <h2>📊 Drive Analytics</h2>
 
-          <p>Distance: {(distance / 1000).toFixed(2)} km</p>
-          <p>Speed: {speed} km/h</p>
+          <div className="report-grid">
+            <div className="card">
+              <h4>Distance</h4>
+              <p>{(distance / 1000).toFixed(2)} km</p>
+            </div>
 
-          {/* 🗺️ MAP SNAPSHOT */}
+            <div className="card">
+              <h4>Speed</h4>
+              <p>{speed} km/h</p>
+            </div>
+
+            <div className="card">
+              <h4>Events</h4>
+              <p>{events.length}</p>
+            </div>
+
+            <div className="card">
+              <h4>Road Score</h4>
+              <p>{Math.max(0, 100 - events.length * 5)}</p>
+            </div>
+          </div>
+
           <h3>🗺️ Route Overview</h3>
-          <ReportMap route={route} events={events} />
+          <img
+            src={getRouteImage()}
+            alt="Route"
+            style={{ width: "100%", borderRadius: "12px" }}
+          />
 
-          {/* 📊 GRAPH */}
-          <LineChart width={300} height={200} data={speedData}>
+          <h3>📈 Speed Graph</h3>
+          <LineChart width={350} height={200} data={speedData}>
             <XAxis dataKey="time" />
             <YAxis />
             <Tooltip />
-            <Line dataKey="speed" stroke="#00f" />
+            <Line dataKey="speed" stroke="#38bdf8" />
           </LineChart>
 
-          <button onClick={downloadPDF}>📄 PDF</button>
-          <button onClick={replayRoute}>🎥 Replay</button>
+          <div className="report-buttons">
+            <button onClick={downloadPDF}>📄 Export</button>
+            <button onClick={replayRoute}>🎥 Replay</button>
+          </div>
         </div>
       )}
     </div>
