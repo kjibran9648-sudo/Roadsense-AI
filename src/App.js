@@ -15,13 +15,11 @@ import { getDistance, getRhumbLineBearing } from "geolib";
 import { LineChart, Line, XAxis, YAxis, Tooltip } from "recharts";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
-import polyline from "@mapbox/polyline";
 import "./App.css";
 
 const API = "https://roadsense-backend-gdsm.onrender.com";
-const MAPBOX_TOKEN = "YOUR_MAPBOX_TOKEN"; // 🔑 replace
 
-/* 🔥 HEATMAP */
+/* 🔥 Heatmap */
 function Heatmap({ events }) {
   const map = useMap();
 
@@ -39,10 +37,10 @@ function Heatmap({ events }) {
   return null;
 }
 
-/* 🚗 CAR ICON */
-const carIcon = (angle) =>
+/* 🚗 Car icon */
+const carIcon = angle =>
   L.divIcon({
-    html: `<div style="transform: rotate(${angle}deg); font-size:26px;">🚗</div>`
+    html: `<div style="transform: rotate(${angle}deg); font-size:24px;">🚗</div>`
   });
 
 function App() {
@@ -58,7 +56,7 @@ function App() {
 
   const reportRef = useRef();
 
-  /* 🚗 START */
+  /* 🚗 Start Driving */
   const startDriving = () => {
     setIsDriving(true);
     setRoute([]);
@@ -67,13 +65,13 @@ function App() {
     setSpeedData([]);
 
     const id = navigator.geolocation.watchPosition(
-      (pos) => {
+      pos => {
         const { latitude, longitude, speed } = pos.coords;
         const point = [latitude, longitude];
 
         setRoute(prev => {
           if (prev.length > 0) {
-            const last = prev.at(-1);
+            const last = prev[prev.length - 1];
 
             const dist = getDistance(
               { latitude: last[0], longitude: last[1] },
@@ -103,14 +101,14 @@ function App() {
           { time: prev.length, speed: Number(sp) }
         ]);
       },
-      () => alert("Enable GPS"),
+      () => alert("❌ Enable GPS permission"),
       { enableHighAccuracy: true }
     );
 
     setWatchId(id);
   };
 
-  /* 🛑 STOP */
+  /* 🛑 Stop Driving */
   const endDriving = async () => {
     if (watchId) navigator.geolocation.clearWatch(watchId);
 
@@ -122,11 +120,11 @@ function App() {
     } catch {}
   };
 
-  /* ➕ ADD EVENT */
-  const addEvent = (type) => {
+  /* ➕ Add Event */
+  const addEvent = type => {
     if (!route.length) return;
 
-    const last = route.at(-1);
+    const last = route[route.length - 1];
 
     setEvents(prev => [
       ...prev,
@@ -142,35 +140,31 @@ function App() {
     ]);
   };
 
-  /* 🗺️ STATIC ROUTE IMAGE (FOR REPORT + PDF ✅) */
-  const getRouteImage = () => {
-    if (route.length < 2) return "";
-
-    const coords = route.map(p => [p[0], p[1]]);
-    const encoded = polyline.encode(coords);
-
-    const markers = events.map(e => {
-      let color = "ff0000"; // pothole
-      if (e.type === "breaker") color = "ffff00";
-      if (e.type === "streetlight") color = "800080";
-
-      return `pin-s+${color}(${e.lng},${e.lat})`;
-    }).join(",");
-
-    return `https://api.mapbox.com/styles/v1/mapbox/streets-v11/static/path-5+0000ff(${encoded})/${markers}/${coords[0][1]},${coords[0][0]},13/700x300?access_token=${MAPBOX_TOKEN}`;
-  };
-
-  /* 📄 PDF */
+  /* 📄 Export PDF (FULL FIX) */
   const downloadPDF = async () => {
-    const canvas = await html2canvas(reportRef.current);
+    const element = reportRef.current;
+
+    // wait for map tiles
+    await new Promise(res => setTimeout(res, 1500));
+
+    const canvas = await html2canvas(element, {
+      useCORS: true,
+      allowTaint: true,
+      scale: 2
+    });
+
     const img = canvas.toDataURL("image/png");
 
-    const pdf = new jsPDF();
-    pdf.addImage(img, "PNG", 10, 10, 180, 0);
+    const pdf = new jsPDF("p", "mm", "a4");
+
+    const width = 190;
+    const height = (canvas.height * width) / canvas.width;
+
+    pdf.addImage(img, "PNG", 10, 10, width, height);
     pdf.save("RoadSense_Report.pdf");
   };
 
-  /* 🎥 REPLAY */
+  /* 🎥 Replay */
   const replayRoute = () => {
     const original = [...route];
     let i = 0;
@@ -186,10 +180,10 @@ function App() {
   return (
     <div className="app">
       <h1 className="title">
-        RoadSense AI <span>– Pothole Detection System</span>
+        RoadSense AI <span>Pothole Detection System</span>
       </h1>
 
-      {/* 🎮 CONTROLS */}
+      {/* CONTROLS */}
       <div className="controls">
         {!isDriving ? (
           <button className="btn start" onClick={startDriving}>
@@ -200,15 +194,15 @@ function App() {
             <button className="btn pothole" onClick={() => addEvent("pothole")}>
               🚧
             </button>
-
             <button className="btn breaker" onClick={() => addEvent("breaker")}>
               ⚠️
             </button>
-
-            <button className="btn light" onClick={() => addEvent("streetlight")}>
+            <button
+              className="btn light"
+              onClick={() => addEvent("streetlight")}
+            >
               💡
             </button>
-
             <button className="btn end" onClick={endDriving}>
               🛑
             </button>
@@ -216,70 +210,52 @@ function App() {
         )}
       </div>
 
-      {/* 🗺️ MAP */}
-      <MapContainer center={[26.85, 80.95]} zoom={13} className="map">
-        <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+      {/* REPORT (MAP INSIDE 🔥) */}
+      <div ref={reportRef} className="report">
 
-        <Polyline positions={route} color="#38bdf8" />
+        {/* MAP INSIDE REPORT */}
+        <MapContainer
+          center={[26.85, 80.95]}
+          zoom={13}
+          className="map"
+        >
+          <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
 
-        {route.length > 0 && (
+          <Polyline positions={route} color="cyan" />
+
+          {route.length > 0 && (
+            <>
+              <CircleMarker center={route.at(-1)} radius={8} color="blue" />
+              <Marker position={route.at(-1)} icon={carIcon(heading)} />
+            </>
+          )}
+
+          <Heatmap events={events} />
+        </MapContainer>
+
+        {showReport && (
           <>
-            <CircleMarker center={route.at(-1)} radius={8} color="blue" />
-            <Marker position={route.at(-1)} icon={carIcon(heading)} />
+            <h2>📊 Drive Analytics</h2>
+
+            <p>Distance: {(distance / 1000).toFixed(2)} km</p>
+            <p>Speed: {speed} km/h</p>
+            <p>Events: {events.length}</p>
+
+            <h3>📈 Speed Graph</h3>
+            <LineChart width={350} height={200} data={speedData}>
+              <XAxis dataKey="time" />
+              <YAxis />
+              <Tooltip />
+              <Line dataKey="speed" stroke="cyan" />
+            </LineChart>
+
+            <div className="report-buttons">
+              <button onClick={downloadPDF}>📄 Export PDF</button>
+              <button onClick={replayRoute}>🎥 Replay</button>
+            </div>
           </>
         )}
-
-        <Heatmap events={events} />
-      </MapContainer>
-
-      {/* 📊 REPORT */}
-      {showReport && (
-        <div ref={reportRef} className="report premium">
-          <h2>📊 Drive Analytics</h2>
-
-          <div className="report-grid">
-            <div className="card">
-              <h4>Distance</h4>
-              <p>{(distance / 1000).toFixed(2)} km</p>
-            </div>
-
-            <div className="card">
-              <h4>Speed</h4>
-              <p>{speed} km/h</p>
-            </div>
-
-            <div className="card">
-              <h4>Events</h4>
-              <p>{events.length}</p>
-            </div>
-
-            <div className="card">
-              <h4>Road Score</h4>
-              <p>{Math.max(0, 100 - events.length * 5)}</p>
-            </div>
-          </div>
-
-          <h3>🗺️ Route Overview</h3>
-          <img
-            src={getRouteImage()}
-            alt="Route"
-            style={{ width: "100%", borderRadius: "12px" }}
-          />
-
-          <h3>📈 Speed Graph</h3>
-          <LineChart width={350} height={200} data={speedData}>
-            <XAxis dataKey="time" />
-            <YAxis />
-            <Tooltip />
-            <Line dataKey="speed" stroke="#38bdf8" />
-          </LineChart>
-
-          <div className="report-buttons">
-            <button onClick={downloadPDF}>📄 Export</button>
-            <button onClick={replayRoute}>🎥 Replay</button>
-          </div>
-        </div>
-      )}
+      </div>
     </div>
   );
 }

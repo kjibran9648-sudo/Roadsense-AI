@@ -179,3 +179,14 @@ body {
   transform: scale(1.05);
   opacity: 0.9;
 }
+.map {
+  height: 300px;
+  width: 100%;
+  border-radius: 12px;
+}
+
+.report {
+  background: #020617;
+  padding: 20px;
+  border-radius: 16px;
+}
