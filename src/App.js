@@ -20,7 +20,7 @@ import "./App.css";
 
 const API = "https://roadsense-backend-gdsm.onrender.com";
 
-// 🔥 Heatmap
+/* 🔥 HEATMAP */
 function Heatmap({ events }) {
   const map = useMap();
 
@@ -29,7 +29,7 @@ function Heatmap({ events }) {
 
     const heat = L.heatLayer(
       events.map(e => [e.lat, e.lng, e.severity]),
-      { radius: 30, blur: 20 }
+      { radius: 25 }
     ).addTo(map);
 
     return () => map.removeLayer(heat);
@@ -38,48 +38,79 @@ function Heatmap({ events }) {
   return null;
 }
 
-// 🚗 Follow user
-function FollowUser({ route }) {
+/* 📍 AUTO ZOOM */
+function FitBounds({ route }) {
   const map = useMap();
 
   useEffect(() => {
-    if (route.length > 0) {
-      map.flyTo(route[route.length - 1], 17);
+    if (route.length > 1) {
+      const bounds = L.latLngBounds(route);
+      map.fitBounds(bounds, { padding: [30, 30] });
     }
   }, [route, map]);
 
   return null;
 }
 
-// 🚗 Car icon
+/* 🗺️ REPORT MAP */
+function ReportMap({ route, events }) {
+  return (
+    <MapContainer
+      center={route[0] || [26.85, 80.95]}
+      zoom={14}
+      style={{ height: "250px", width: "100%", borderRadius: "10px" }}
+      dragging={false}
+      zoomControl={false}
+      scrollWheelZoom={false}
+    >
+      <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+
+      <FitBounds route={route} />
+
+      <Polyline positions={route} color="cyan" />
+
+      {/* 🧠 AI severity coloring */}
+      {events.map((e, i) => {
+        let color = "green";
+        if (e.severity > 6) color = "red";
+        else if (e.severity > 3) color = "orange";
+
+        return (
+          <CircleMarker
+            key={i}
+            center={[e.lat, e.lng]}
+            radius={6}
+            pathOptions={{ color, fillOpacity: 1 }}
+          />
+        );
+      })}
+
+      <Heatmap events={events} />
+    </MapContainer>
+  );
+}
+
+/* 🚗 CAR ICON */
 const carIcon = (angle) =>
   L.divIcon({
-    className: "car-icon",
     html: `<div style="transform: rotate(${angle}deg); font-size:28px;">🚗</div>`
   });
 
 function App() {
-  const [isDriving, setIsDriving] = useState(false);
   const [route, setRoute] = useState([]);
   const [events, setEvents] = useState([]);
   const [watchId, setWatchId] = useState(null);
-
   const [speed, setSpeed] = useState("0");
   const [distance, setDistance] = useState(0);
   const [heading, setHeading] = useState(0);
-
+  const [isDriving, setIsDriving] = useState(false);
   const [showReport, setShowReport] = useState(false);
   const [speedData, setSpeedData] = useState([]);
 
   const reportRef = useRef();
 
-  // 🚗 Start Driving
+  /* 🚗 START */
   const startDriving = () => {
-    if (!navigator.geolocation) {
-      alert("❌ GPS not supported");
-      return;
-    }
-
     setIsDriving(true);
     setRoute([]);
     setEvents([]);
@@ -96,20 +127,19 @@ function App() {
           if (prev.length > 0) {
             const last = prev[prev.length - 1];
 
-            const prevPoint = {
-              latitude: last[0],
-              longitude: last[1]
-            };
-
-            const currPoint = { latitude, longitude };
-
-            const dist = getDistance(prevPoint, currPoint);
+            const dist = getDistance(
+              { latitude: last[0], longitude: last[1] },
+              { latitude, longitude }
+            );
 
             if (dist < 3) return prev;
 
             setDistance(d => d + dist);
 
-            const angle = getRhumbLineBearing(prevPoint, currPoint);
+            const angle = getRhumbLineBearing(
+              { latitude: last[0], longitude: last[1] },
+              { latitude, longitude }
+            );
             setHeading(angle);
           }
 
@@ -124,21 +154,14 @@ function App() {
           { time: prev.length, speed: Number(sp) }
         ]);
       },
-      (err) => {
-        console.error(err);
-        alert("❌ GPS error. Enable location permission.");
-      },
-      {
-        enableHighAccuracy: true,
-        maximumAge: 0,
-        timeout: 10000
-      }
+      (err) => alert("GPS error"),
+      { enableHighAccuracy: true }
     );
 
     setWatchId(id);
   };
 
-  // 🛑 Stop Driving
+  /* 🛑 STOP */
   const endDriving = async () => {
     if (watchId) navigator.geolocation.clearWatch(watchId);
 
@@ -146,42 +169,41 @@ function App() {
     setShowReport(true);
 
     try {
-      await axios.post(`${API}/save-session`, {
-        path: route,
-        events
-      });
-    } catch {
-      console.log("Backend not reachable");
-    }
+      await axios.post(`${API}/save-session`, { path: route, events });
+    } catch {}
   };
 
-  // ➕ Add Event
+  /* ➕ EVENT */
   const addEvent = (type) => {
     if (!route.length) return;
 
-    const last = route[route.length - 1];
+    const last = route.at(-1);
 
     setEvents(prev => [
       ...prev,
-      { lat: last[0], lng: last[1], type, severity: 5 }
+      {
+        lat: last[0],
+        lng: last[1],
+        type,
+        severity: Math.floor(Math.random() * 10) + 1
+      }
     ]);
   };
 
-  // 📄 PDF Download
+  /* 📄 PDF */
   const downloadPDF = async () => {
-    const canvas = await html2canvas(reportRef.current);
+    const canvas = await html2canvas(reportRef.current, { scale: 2 });
     const img = canvas.toDataURL("image/png");
 
     const pdf = new jsPDF();
     pdf.addImage(img, "PNG", 10, 10, 180, 0);
-    pdf.save("trip-report.pdf");
+    pdf.save("RoadSense_Report.pdf");
   };
 
-  // 🎥 Replay
+  /* 🎥 REPLAY */
   const replayRoute = () => {
-    let i = 0;
     const original = [...route];
-
+    let i = 0;
     setRoute([]);
 
     const interval = setInterval(() => {
@@ -198,52 +220,27 @@ function App() {
         <span> – A Pothole Detection System</span>
       </h1>
 
-      <div className="panel glass">
-        <div className="controls">
-          {!isDriving ? (
-            <button className="btn primary" onClick={startDriving}>
-              🚗 Start Drive
-            </button>
-          ) : (
-            <>
-              <button className="btn warn" onClick={() => addEvent("pothole")}>
-                🚧 Pothole
-              </button>
-
-              <button className="btn warn" onClick={() => addEvent("breaker")}>
-                ⚠️ Breaker
-              </button>
-
-              <button className="btn danger" onClick={endDriving}>
-                🛑 End
-              </button>
-            </>
-          )}
-        </div>
-
-        <div className="stats">
-          <div className="card">⚡ {speed} km/h</div>
-          <div className="card">📏 {(distance / 1000).toFixed(2)} km</div>
-        </div>
+      <div className="controls">
+        {!isDriving ? (
+          <button onClick={startDriving}>Start</button>
+        ) : (
+          <>
+            <button onClick={() => addEvent("pothole")}>🚧</button>
+            <button onClick={() => addEvent("breaker")}>⚠️</button>
+            <button onClick={endDriving}>Stop</button>
+          </>
+        )}
       </div>
 
       <MapContainer center={[26.85, 80.95]} zoom={13} className="map">
         <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
 
-        <FollowUser route={route} />
-
         <Polyline positions={route} color="cyan" />
 
         {route.length > 0 && (
           <>
-            {/* 🔵 Blue Dot */}
-            <CircleMarker center={route.at(-1)} radius={8} color="#3b82f6" />
-            <CircleMarker center={route.at(-1)} radius={18} opacity={0.3} />
-
-            {/* 🚗 Car */}
-            <Marker position={route.at(-1)} icon={carIcon(heading)}>
-              <Popup>You are here 🚗</Popup>
-            </Marker>
+            <CircleMarker center={route.at(-1)} radius={8} color="blue" />
+            <Marker position={route.at(-1)} icon={carIcon(heading)} />
           </>
         )}
 
@@ -252,31 +249,26 @@ function App() {
 
       {/* 📊 REPORT */}
       {showReport && (
-        <div className="report glass" ref={reportRef}>
-          <h2>📊 Trip Summary</h2>
+        <div ref={reportRef} className="report">
+          <h2>Trip Report</h2>
 
-          <p>📏 Distance: {(distance / 1000).toFixed(2)} km</p>
-          <p>⚡ Speed: {speed} km/h</p>
-          <p>🚧 Events: {events.length}</p>
+          <p>Distance: {(distance / 1000).toFixed(2)} km</p>
+          <p>Speed: {speed} km/h</p>
 
+          {/* 🗺️ MAP SNAPSHOT */}
+          <h3>🗺️ Route Overview</h3>
+          <ReportMap route={route} events={events} />
+
+          {/* 📊 GRAPH */}
           <LineChart width={300} height={200} data={speedData}>
             <XAxis dataKey="time" />
             <YAxis />
             <Tooltip />
-            <Line type="monotone" dataKey="speed" stroke="#38bdf8" />
+            <Line dataKey="speed" stroke="#00f" />
           </LineChart>
 
-          <div className="report-buttons">
-            <button className="btn primary" onClick={downloadPDF}>
-              📄 PDF
-            </button>
-            <button className="btn primary" onClick={replayRoute}>
-              🎥 Replay
-            </button>
-            <button className="btn" onClick={() => setShowReport(false)}>
-              Close
-            </button>
-          </div>
+          <button onClick={downloadPDF}>📄 PDF</button>
+          <button onClick={replayRoute}>🎥 Replay</button>
         </div>
       )}
     </div>
