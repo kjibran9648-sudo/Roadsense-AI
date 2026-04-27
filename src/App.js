@@ -1,5 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
-import axios from "axios";
+import React, { useState, useEffect } from "react";
 import {
   MapContainer,
   TileLayer,
@@ -12,27 +11,26 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import "leaflet.heat";
 import { getDistance, getRhumbLineBearing } from "geolib";
-import { LineChart, Line, XAxis, YAxis, Tooltip } from "recharts";
-import html2canvas from "html2canvas";
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer
+} from "recharts";
 import jsPDF from "jspdf";
 import "./App.css";
 
-const API = "https://roadsense-backend-gdsm.onrender.com";
-
-/* 🔥 Heatmap */
-function Heatmap({ events }) {
+/* 📍 FOLLOW USER */
+function FollowUser({ route }) {
   const map = useMap();
 
   useEffect(() => {
-    if (!events.length) return;
-
-    const heat = L.heatLayer(
-      events.map(e => [e.lat, e.lng, e.severity]),
-      { radius: 25 }
-    ).addTo(map);
-
-    return () => map.removeLayer(heat);
-  }, [events, map]);
+    if (route.length > 0) {
+      map.flyTo(route[route.length - 1], 17);
+    }
+  }, [route, map]);
 
   return null;
 }
@@ -40,23 +38,21 @@ function Heatmap({ events }) {
 /* 🚗 Car icon */
 const carIcon = angle =>
   L.divIcon({
-    html: `<div style="transform: rotate(${angle}deg); font-size:24px;">🚗</div>`
+    html: `<div style="transform: rotate(${angle}deg); font-size:22px;">🚗</div>`
   });
 
 function App() {
   const [route, setRoute] = useState([]);
   const [events, setEvents] = useState([]);
-  const [watchId, setWatchId] = useState(null);
-  const [speed, setSpeed] = useState("0");
+  const [speed, setSpeed] = useState(0);
   const [distance, setDistance] = useState(0);
   const [heading, setHeading] = useState(0);
+  const [watchId, setWatchId] = useState(null);
   const [isDriving, setIsDriving] = useState(false);
   const [showReport, setShowReport] = useState(false);
   const [speedData, setSpeedData] = useState([]);
 
-  const reportRef = useRef();
-
-  /* 🚗 Start Driving */
+  /* 🚗 START */
   const startDriving = () => {
     setIsDriving(true);
     setRoute([]);
@@ -78,7 +74,7 @@ function App() {
               { latitude, longitude }
             );
 
-            if (dist < 3) return prev;
+            if (dist < 2) return prev;
 
             setDistance(d => d + dist);
 
@@ -93,34 +89,34 @@ function App() {
           return [...prev, point];
         });
 
-        const sp = speed ? (speed * 3.6).toFixed(1) : "0";
-        setSpeed(sp);
+        const sp = speed ? speed * 3.6 : 0;
+        const fixed = Number(sp.toFixed(1));
+
+        setSpeed(fixed);
 
         setSpeedData(prev => [
           ...prev,
-          { time: prev.length, speed: Number(sp) }
+          { time: prev.length + 1, speed: fixed }
         ]);
       },
-      () => alert("❌ Enable GPS permission"),
+      err => {
+        console.error(err);
+        alert("Enable GPS permission");
+      },
       { enableHighAccuracy: true }
     );
 
     setWatchId(id);
   };
 
-  /* 🛑 Stop Driving */
-  const endDriving = async () => {
+  /* 🛑 STOP */
+  const endDriving = () => {
     if (watchId) navigator.geolocation.clearWatch(watchId);
-
     setIsDriving(false);
     setShowReport(true);
-
-    try {
-      await axios.post(`${API}/save-session`, { path: route, events });
-    } catch {}
   };
 
-  /* ➕ Add Event */
+  /* ➕ ADD EVENT */
   const addEvent = type => {
     if (!route.length) return;
 
@@ -131,131 +127,145 @@ function App() {
       {
         lat: last[0],
         lng: last[1],
-        type,
-        severity:
-          type === "streetlight"
-            ? 1
-            : Math.floor(Math.random() * 10) + 1
+        type
       }
     ]);
   };
 
-  /* 📄 Export PDF (FULL FIX) */
-  const downloadPDF = async () => {
-    const element = reportRef.current;
+  /* 🎨 ROUTE IMAGE (PDF FIX) */
+  const generateRouteImage = () => {
+    if (route.length < 2) return null;
 
-    // wait for map tiles
-    await new Promise(res => setTimeout(res, 1500));
+    const canvas = document.createElement("canvas");
+    canvas.width = 800;
+    canvas.height = 400;
+    const ctx = canvas.getContext("2d");
 
-    const canvas = await html2canvas(element, {
-      useCORS: true,
-      allowTaint: true,
-      scale: 2
+    ctx.fillStyle = "#0f172a";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    const lats = route.map(p => p[0]);
+    const lngs = route.map(p => p[1]);
+
+    const minLat = Math.min(...lats);
+    const maxLat = Math.max(...lats);
+    const minLng = Math.min(...lngs);
+    const maxLng = Math.max(...lngs);
+
+    const scaleX = canvas.width / (maxLng - minLng || 1);
+    const scaleY = canvas.height / (maxLat - minLat || 1);
+
+    // ✈️ route line
+    ctx.strokeStyle = "#3b82f6";
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+
+    route.forEach((p, i) => {
+      const x = (p[1] - minLng) * scaleX;
+      const y = canvas.height - (p[0] - minLat) * scaleY;
+
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
     });
 
-    const img = canvas.toDataURL("image/png");
+    ctx.stroke();
 
-    const pdf = new jsPDF("p", "mm", "a4");
+    // 🔴 🟡 events
+    events.forEach(e => {
+      const x = (e.lng - minLng) * scaleX;
+      const y = canvas.height - (e.lat - minLat) * scaleY;
 
-    const width = 190;
-    const height = (canvas.height * width) / canvas.width;
+      ctx.fillStyle =
+        e.type === "pothole"
+          ? "red"
+          : e.type === "breaker"
+          ? "yellow"
+          : "purple";
 
-    pdf.addImage(img, "PNG", 10, 10, width, height);
-    pdf.save("RoadSense_Report.pdf");
+      ctx.beginPath();
+      ctx.arc(x, y, 6, 0, 2 * Math.PI);
+      ctx.fill();
+    });
+
+    return canvas.toDataURL("image/png");
   };
 
-  /* 🎥 Replay */
-  const replayRoute = () => {
-    const original = [...route];
-    let i = 0;
-    setRoute([]);
+  /* 📄 PDF */
+  const downloadPDF = () => {
+    if (route.length < 2) {
+      alert("Drive first to generate report");
+      return;
+    }
 
-    const interval = setInterval(() => {
-      if (i >= original.length) return clearInterval(interval);
-      setRoute(prev => [...prev, original[i]]);
-      i++;
-    }, 200);
+    const pdf = new jsPDF();
+
+    pdf.text("RoadSense AI Report", 10, 10);
+
+    const img = generateRouteImage();
+
+    pdf.addImage(img, "PNG", 10, 20, 180, 80);
+
+    pdf.text(`Distance: ${(distance / 1000).toFixed(2)} km`, 10, 110);
+    pdf.text(`Events: ${events.length}`, 10, 120);
+
+    pdf.save("RoadSense_Report.pdf");
   };
 
   return (
     <div className="app">
-      <h1 className="title">
-        RoadSense AI <span>Pothole Detection System</span>
-      </h1>
+      {/* TOP BAR */}
+      <div className="nav-bar">🚗 RoadSense AI</div>
 
-      {/* CONTROLS */}
-      <div className="controls">
-        {!isDriving ? (
-          <button className="btn start" onClick={startDriving}>
-            🚗 Start Driving
-          </button>
-        ) : (
-          <div className="drive-controls">
-            <button className="btn pothole" onClick={() => addEvent("pothole")}>
-              🚧
-            </button>
-            <button className="btn breaker" onClick={() => addEvent("breaker")}>
-              ⚠️
-            </button>
-            <button
-              className="btn light"
-              onClick={() => addEvent("streetlight")}
-            >
-              💡
-            </button>
-            <button className="btn end" onClick={endDriving}>
-              🛑
-            </button>
-          </div>
-        )}
-      </div>
+      {/* MAP */}
+      <MapContainer center={[26.85, 80.95]} zoom={13} className="map">
+        <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
 
-      {/* REPORT (MAP INSIDE 🔥) */}
-      <div ref={reportRef} className="report">
+        <FollowUser route={route} />
 
-        {/* MAP INSIDE REPORT */}
-        <MapContainer
-          center={[26.85, 80.95]}
-          zoom={13}
-          className="map"
-        >
-          <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+        <Polyline positions={route} color="#3b82f6" />
 
-          <Polyline positions={route} color="cyan" />
-
-          {route.length > 0 && (
-            <>
-              <CircleMarker center={route.at(-1)} radius={8} color="blue" />
-              <Marker position={route.at(-1)} icon={carIcon(heading)} />
-            </>
-          )}
-
-          <Heatmap events={events} />
-        </MapContainer>
-
-        {showReport && (
+        {route.length > 0 && (
           <>
-            <h2>📊 Drive Analytics</h2>
+            <CircleMarker center={route.at(-1)} radius={8} color="blue" />
+            <Marker position={route.at(-1)} icon={carIcon(heading)} />
+          </>
+        )}
+      </MapContainer>
 
-            <p>Distance: {(distance / 1000).toFixed(2)} km</p>
-            <p>Speed: {speed} km/h</p>
-            <p>Events: {events.length}</p>
-
-            <h3>📈 Speed Graph</h3>
-            <LineChart width={350} height={200} data={speedData}>
-              <XAxis dataKey="time" />
-              <YAxis />
-              <Tooltip />
-              <Line dataKey="speed" stroke="cyan" />
-            </LineChart>
-
-            <div className="report-buttons">
-              <button onClick={downloadPDF}>📄 Export PDF</button>
-              <button onClick={replayRoute}>🎥 Replay</button>
-            </div>
+      {/* FLOATING CONTROLS */}
+      <div className="floating-panel">
+        {!isDriving ? (
+          <button onClick={startDriving}>Start</button>
+        ) : (
+          <>
+            <button onClick={() => addEvent("pothole")}>🚧</button>
+            <button onClick={() => addEvent("breaker")}>⚠️</button>
+            <button onClick={endDriving}>Stop</button>
           </>
         )}
       </div>
+
+      {/* REPORT */}
+      {showReport && (
+        <div className="report">
+          <h2>Drive Analytics</h2>
+
+          <p>Distance: {(distance / 1000).toFixed(2)} km</p>
+          <p>Speed: {speed} km/h</p>
+          <p>Events: {events.length}</p>
+
+          <ResponsiveContainer width="100%" height={200}>
+            <LineChart data={speedData}>
+              <XAxis dataKey="time" />
+              <YAxis />
+              <Tooltip />
+              <Line dataKey="speed" stroke="#3b82f6" />
+            </LineChart>
+          </ResponsiveContainer>
+
+          <button onClick={downloadPDF}>📄 Export PDF</button>
+        </div>
+      )}
     </div>
   );
 }
