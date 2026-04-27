@@ -132,7 +132,7 @@ function App() {
     ]);
   };
 
-  /* 🎨 ROUTE IMAGE (PDF FIX) */
+  /* 🎨 ROUTE IMAGE (PDF) */
   const generateRouteImage = () => {
     if (route.length < 2) return null;
 
@@ -141,7 +141,7 @@ function App() {
     canvas.height = 400;
     const ctx = canvas.getContext("2d");
 
-    ctx.fillStyle = "#0f172a";
+    ctx.fillStyle = "#020617";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     const lats = route.map(p => p[0]);
@@ -155,7 +155,6 @@ function App() {
     const scaleX = canvas.width / (maxLng - minLng || 1);
     const scaleY = canvas.height / (maxLat - minLat || 1);
 
-    // ✈️ route line
     ctx.strokeStyle = "#3b82f6";
     ctx.lineWidth = 4;
     ctx.beginPath();
@@ -170,7 +169,6 @@ function App() {
 
     ctx.stroke();
 
-    // 🔴 🟡 events
     events.forEach(e => {
       const x = (e.lng - minLng) * scaleX;
       const y = canvas.height - (e.lat - minLat) * scaleY;
@@ -202,7 +200,6 @@ function App() {
     pdf.text("RoadSense AI Report", 10, 10);
 
     const img = generateRouteImage();
-
     pdf.addImage(img, "PNG", 10, 20, 180, 80);
 
     pdf.text(`Distance: ${(distance / 1000).toFixed(2)} km`, 10, 110);
@@ -213,15 +210,12 @@ function App() {
 
   return (
     <div className="app">
-      {/* TOP BAR */}
       <div className="nav-bar">🚗 RoadSense AI</div>
 
       {/* MAP */}
       <MapContainer center={[26.85, 80.95]} zoom={13} className="map">
         <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-
         <FollowUser route={route} />
-
         <Polyline positions={route} color="#3b82f6" />
 
         {route.length > 0 && (
@@ -232,28 +226,72 @@ function App() {
         )}
       </MapContainer>
 
-      {/* FLOATING CONTROLS */}
+      {/* CONTROLS */}
       <div className="floating-panel">
         {!isDriving ? (
-          <button onClick={startDriving}>Start</button>
+          <button className="start-btn" onClick={startDriving}>🚗</button>
         ) : (
           <>
-            <button onClick={() => addEvent("pothole")}>🚧</button>
-            <button onClick={() => addEvent("breaker")}>⚠️</button>
-            <button onClick={endDriving}>Stop</button>
+            <button className="pothole-btn" onClick={() => addEvent("pothole")}>🚧</button>
+            <button className="breaker-btn" onClick={() => addEvent("breaker")}>⚠️</button>
+            <button className="stop-btn" onClick={endDriving}>🛑</button>
           </>
         )}
       </div>
 
       {/* REPORT */}
       {showReport && (
-        <div className="report">
-          <h2>Drive Analytics</h2>
+        <div className="report premium">
+          <h2>📊 Drive Analytics</h2>
 
-          <p>Distance: {(distance / 1000).toFixed(2)} km</p>
-          <p>Speed: {speed} km/h</p>
-          <p>Events: {events.length}</p>
+          <div className="report-grid">
+            <div className="report-card">
+              <h3>Distance</h3>
+              <p>{(distance / 1000).toFixed(2)} km</p>
+            </div>
 
+            <div className="report-card">
+              <h3>Speed</h3>
+              <p>{speed} km/h</p>
+            </div>
+
+            <div className="report-card">
+              <h3>Events</h3>
+              <p>{events.length}</p>
+            </div>
+
+            <div className="report-card">
+              <h3>Road Score</h3>
+              <p>{Math.max(100 - events.length * 2, 0)}</p>
+            </div>
+          </div>
+
+          {/* ROUTE PREVIEW */}
+          <h3>🗺 Route Overview</h3>
+          <div className="report-map">
+            <MapContainer
+              center={route[0] || [26.85, 80.95]}
+              zoom={14}
+              style={{ height: "200px", width: "100%" }}
+              dragging={false}
+              zoomControl={false}
+            >
+              <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+              <Polyline positions={route} color="#3b82f6" />
+
+              {events.map((e, i) => (
+                <CircleMarker
+                  key={i}
+                  center={[e.lat, e.lng]}
+                  radius={5}
+                  color={e.type === "pothole" ? "red" : "yellow"}
+                />
+              ))}
+            </MapContainer>
+          </div>
+
+          {/* GRAPH */}
+          <h3>📈 Speed Graph</h3>
           <ResponsiveContainer width="100%" height={200}>
             <LineChart data={speedData}>
               <XAxis dataKey="time" />
@@ -263,7 +301,10 @@ function App() {
             </LineChart>
           </ResponsiveContainer>
 
-          <button onClick={downloadPDF}>📄 Export PDF</button>
+          <div className="report-buttons">
+            <button onClick={downloadPDF}>📄 Export PDF</button>
+            <button onClick={() => setShowReport(false)}>⬅ Back</button>
+          </div>
         </div>
       )}
     </div>
